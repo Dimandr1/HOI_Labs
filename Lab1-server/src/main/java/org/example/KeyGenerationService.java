@@ -19,6 +19,8 @@ import org.bouncycastle.cert.jcajce.*;
 import org.bouncycastle.operator.*;
 import org.bouncycastle.operator.jcajce.*;
 
+
+//Основной класс сервера
 public class KeyGenerationService {
     private final int port;
     private final int keyGeneratorThreads;
@@ -43,7 +45,10 @@ public class KeyGenerationService {
 
 
     public static void main(String[] args) {
+        //Введение параметров для запуска сервера
         System.out.println("Started. Print port and generator threads amount");
+        System.out.println("AND DON'T FORGET TO GENERATE SIGNING KEY BEFORE START");
+        System.out.println("Example:\n8080 2");
         String[] params;
         try (Scanner scanner = new Scanner(System.in)) {
             String input = scanner.nextLine().trim();
@@ -54,7 +59,7 @@ public class KeyGenerationService {
             int keygenThreads = Integer.parseInt(params[1]);
             String issuerName = new String("CN=Cringe");
             //String issuerName = params[2];
-            String caKeyFile = "main.key";
+            String caKeyFile = "main.key"; //ключ заранее сгенерирован классом CAGenerator
 
             PrivateKey caPrivateKey = loadKey(caKeyFile);
 
@@ -79,6 +84,11 @@ public class KeyGenerationService {
     }
 
     public void start() throws IOException {
+        //запуск работы потоков
+        //выделяется 1 поток под добавление новых подключений и обработку команд от старых
+        //Этим потоком является стартовый поток
+        //еще 1 поток под отправку ответов на команды клиентов
+        //и еще потоки под генерацию, количество которых задается при старте
         serverChannel = ServerSocketChannel.open();
         serverChannel.configureBlocking(false);
         serverChannel.socket().bind(new InetSocketAddress(port));
@@ -104,6 +114,7 @@ public class KeyGenerationService {
         eventLoop();
     }
 
+    //Функция ожидания ввода для считывающего потока
     private void eventLoop() {
         try {
             while (running) {
@@ -128,6 +139,7 @@ public class KeyGenerationService {
         }
     }
 
+    //Обработка запроса на подключение к серверу
     private void acceptConnection(SelectionKey key) throws IOException {
         SocketChannel clientChannel = ((ServerSocketChannel) key.channel()).accept();
         clientChannel.configureBlocking(false);
@@ -136,6 +148,7 @@ public class KeyGenerationService {
         System.out.println("Accepted connection from: " + clientChannel.getRemoteAddress());
     }
 
+    //Обработка присланной клиентом команды (считывание имени)
     private void readRequest(SelectionKey key) throws IOException {
         SocketChannel channel = (SocketChannel) key.channel();
         ClientSession session = (ClientSession) key.attachment();
@@ -179,6 +192,7 @@ public class KeyGenerationService {
         }
     }
 
+    //Обработка команды по считанному имени (создание запроса на генерацию или сразу добавление в очередь на отправку клиенту)
     private void handleKeyRequest(String clientName, SocketChannel channel, ClientSession session) {
         // Проверка наличия вычисленных ключей
         KeyPairWithCertificate cached = keyCache.get(clientName);
@@ -203,12 +217,14 @@ public class KeyGenerationService {
             }
         } else {
             // Повторный запрос - просто добавить в ожидание
+            //все запросы из очереди ожидания будут обработаны при генерации ключа
             session.addPendingRequest(clientName);
             System.out.println("Duplicate request for name: " + clientName +
                     " (pending: " + currentPending + ")");
         }
     }
 
+    //Обработка запроса на генерацию ключа
     private void generateKeys(String clientName, SocketChannel channel, ClientSession session) {
         try {
             System.out.println("Generating keys for: " + clientName);
@@ -265,7 +281,7 @@ public class KeyGenerationService {
         Date endDate = new Date(System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000); // 1 год
 
         ContentSigner signer = new JcaContentSignerBuilder("SHA256WithRSA")
-                .build(caPrivateKey);
+                .build(caPrivateKey); //подпись будет загруженным предварительно ключом
 
         X509v3CertificateBuilder certBuilder = new X509v3CertificateBuilder(
                 issuer,
@@ -280,6 +296,7 @@ public class KeyGenerationService {
         return new JcaX509CertificateConverter().getCertificate(certHolder);
     }
 
+    //Добавление запроса на отправку ключа пользователю
     private void queueResponse(SocketChannel channel,
                                KeyPairWithCertificate result) {
         try {
@@ -289,6 +306,7 @@ public class KeyGenerationService {
         }
     }
 
+    //Собственно отправка ключей пользователю
     private void sendResponse(ClientResponse response) {
         try {
             SocketChannel channel = response.channel;
@@ -357,6 +375,7 @@ public class KeyGenerationService {
     }
 
 
+    //Класс потока для генерации ключей
     private class KeyGeneratorThread extends Thread {
         public KeyGeneratorThread(String name) {
             super(name);
@@ -402,6 +421,7 @@ public class KeyGenerationService {
         }
 
     }
+    //Сериализация ключей в подходящий для передачи вид
     private String createPEMResponse(KeyPairWithCertificate keyData) throws Exception {
         StringBuilder sb = new StringBuilder();
 
@@ -419,6 +439,8 @@ public class KeyGenerationService {
 
         return sb.toString();
     }
+
+    //Функция для загрузки из памяти ключа (для подписи)
     private static PrivateKey loadKey(String filename) throws Exception {
         String pemContent = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filename)));
         // Удаляем заголовки и разбираем Base64

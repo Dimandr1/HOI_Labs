@@ -7,6 +7,7 @@ import java.security.*;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 
+//Класс для генерации ключа для подписи
 public class CAGenerator {
 
     static {

@@ -29,9 +29,10 @@ public class Client {
     }
 
     public void start() {
-        System.out.println("Started");
+        System.out.println("command arguments: <name> <server adress> <target port> [--noresponse] [--delay <seconds>]");
+        System.out.println("Example:\nasd localhost 8080 --noresponse");
         try (Scanner scanner = new Scanner(System.in)) {
-
+            // Считывание комманд
             while (scanner.hasNextLine()) {
                 String input = scanner.nextLine().trim();
                 try{
@@ -61,6 +62,7 @@ public class Client {
     }
 
     private void parseOptions(String[] parts) {
+        //Парсинг команды
         delaySec = 0;
         skipResponse = false;
 
@@ -82,8 +84,10 @@ public class Client {
     }
 
     private void connectToServer(String name, String server, int port) throws Exception {
+        //Функция для отправки запроса серверу, получения ответа и сохранения данных
         try (SocketChannel channel = SocketChannel.open(new InetSocketAddress(server, port))) {
 
+            //Запрос к серверу
             System.out.println("Connected to " + server + ":" + port);
 
             ByteBuffer request = ByteBuffer.allocate(name.length() + 1);
@@ -133,6 +137,7 @@ public class Client {
                         .generateCertificate(new ByteArrayInputStream(certBytes));
             }
 
+            //Сохранение ключей
             Files.writeString(Paths.get(name + ".key"), pemContents.get("BEGIN PRIVATE KEY"));
             Files.writeString(Paths.get(name + ".crt"), pemContents.get("BEGIN CERTIFICATE"));
             System.out.println("Keys saved");
@@ -141,6 +146,7 @@ public class Client {
         }
     }
     private static Map<String, String> parsePEM(String pemData) {
+        //Обработка ответа сервера
         Map<String, String> result = new HashMap<>();
         String[] blocks = pemData.split("-----");
 
