@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 
+//Функции для работы с обычным списком хранятся здесь, для работы в собственной реализацией - в другом файле
 public class ListSorter {
 
     static ArrayList<Thread> threads;
@@ -103,22 +104,21 @@ public class ListSorter {
         //Фукнция для одного пузырькового обхода для ArrayList
         public void defListSortTurn(){
             for(int i = 0; i < defList.size()-1; i++){
-                String cur = defList.get(i);
-                String next = defList.get(i + 1);
+                synchronized (defList) {
+                    String cur = defList.get(i);
+                    String next = defList.get(i + 1);
 
-                if (cur.compareTo(next) > 0) {
-                    defListSteps++;
-                    synchronized (defList) {
+                    if (cur.compareTo(next) > 0) {
+                        defListSteps++;
                         defList.set(i, next);
                         defList.set(i + 1, cur);
                     }
-                    if(stepInterval > 0){
-                        ListSorter.printDefList();
-                        try {
-                            TimeUnit.SECONDS.sleep(stepInterval);
-                        } catch (InterruptedException e) {
-                            throw new RuntimeException(e);
-                        }
+                }
+                if (stepInterval > 0) {
+                    try {
+                        TimeUnit.SECONDS.sleep(stepInterval);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
                     }
                 }
             }
