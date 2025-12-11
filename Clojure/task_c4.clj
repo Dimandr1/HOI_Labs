@@ -71,7 +71,8 @@
         notify-step (state :notify-step),
         consumers (state :consumers)]
     ;;logging part, notify-step == 0 means no logging
-    (when (and (> notify-step 0)
+    (when 
+    (and (> notify-step 0)
                (> (int (/ cnt notify-step))
                   (int (/ (- cnt amount) notify-step))))
       (println (.format (new java.text.SimpleDateFormat "hh.mm.ss.SSS") (new java.util.Date)) 
@@ -83,22 +84,39 @@
   state)                 ;worker itself is immutable, keeping configuration only
 
 (defn notify-msg
-  "A message that can be sent to a factory worker to notify that the provided 'amount' of 'ware's are
-   just put to the 'storage-atom'."
-   ;; 'state' is for agent created in 'factory', see comments in its code for details
-   ;;The implementation should:
-   ;; - try to retrieve some items from the 'storage-atom' if necessary
-   ;; - if the retrieval is not successful, do not forget to handle validation exception correctly 
-   ;; - if the retrieval is successful, put wares into the internal ':buffer'
-   ;; - when there are enough wares of all types according to :bill, a new cycle must be started with given duratin;
-   ;;   after it finished all the wares must be removed from the internal ':buffer' and ':target-storage' must be notified  
-   ;;   with 'supply-msg'
-   ;; - return new agent state with possibly modified ':buffer' in any case!
   [state ware storage-atom amount]
-  ;;;;;;;;;;;;;;;;;;;;;;;
-  ;;TODO implement me
-  ;;;;;;;;;;;;;;;;;;;;;;;
-  nil)
+  (let [bill (state :bill) 
+        buffer (state :buffer)
+        bill-amt (get bill ware) ;;Вычисляем, сколько еще нужно для производства
+        buf-amt (get buffer ware)
+        needed (- bill-amt buf-amt)
+        new-state
+                      (if (> needed 0)
+                        (let [new-buffer (reduce (fn [buf _]
+                                                   (try ;;Пытаемся брать по 1, сколько нам нужно.
+                                                   ;;Если не получится, то бросится исключение и прекратим добирать
+                                                     (swap! storage-atom dec)
+                                                     (assoc buf ware (inc (get buf ware)))
+                                                     (catch Exception e
+                                                       (reduced buf))))
+                                                 buffer
+                                                 (range needed))]
+                          (assoc state :buffer new-buffer))
+                        state)
+        buffer (new-state :buffer)
+        bill (new-state :bill)
+        can-produce? (reduce-kv (fn [acc k v] ;;проверяем, что хватает всех материалов для производства
+                                  (and acc (>= (get buffer k 0) v)))
+                                true bill)]
+    (if can-produce?
+      (do ;;если хватает - производим
+        (Thread/sleep (new-state :duration))
+        (send (get-in new-state [:target-storage :worker]) supply-msg (new-state :amount))
+        (let [new-buffer (reduce-kv (fn [acc k v]
+                                      (assoc acc k (- (get buffer k) v)))
+                                    {} bill)]
+          (assoc new-state :buffer new-buffer)))
+      new-state)))
 
 ;;;
 (def safe-storage (storage "Safe" 1))
@@ -111,7 +129,7 @@
 (def metal-factory (factory 1 1000 metal-storage "Ore" 10))
 (def lumber-storage (storage "Lumber" 20 cuckoo-clock-factory))
 (def lumber-mill (source 5 4000 lumber-storage))
-(def ore-storage (storage "Ore" 10 metal-factory gears-factory))
+(def ore-storage (storage "Ore" 4 metal-factory gears-factory))
 (def ore-mine (source 2 1000 ore-storage))
 
 ;;;runs sources and the whole process as the result
@@ -125,6 +143,10 @@
   (.stop ore-mine)
   (.stop lumber-mill))
 
-;;;This could be used to aquire errors from workers
-;;;(agent-error (gears-factory :worker))
-;;;(agent-error (metal-storage :worker))
+(start)
+;; (Thread/sleep 300000)
+;; (stop)
+
+;; This could be used to aquire errors from workers
+(agent-error (gears-factory :worker))
+(agent-error (metal-storage :worker))
